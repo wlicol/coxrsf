@@ -1,7 +1,7 @@
 
 These are the R scripts used in this paper:
 
-On fair performance comparison between random survival forest and Cox regression: an example of colorectal cancer study
+**On fair performance comparison between random survival forest and Cox regression: an example of colorectal cancer study**
 
 Sirin Cetin, Ayse Ulgen, Isa Dede, Wentian Li
 
@@ -83,8 +83,8 @@ is time-to-event data, second column is the event status)
 
 
 
-R function: ibsCOX
-------------------
+## R function: ibsCOX
+
 
 ibsCOX \<- function(cox.obj, newx, newy, ave.flag=1)
 
@@ -104,14 +104,14 @@ series of Brier's score.
 ```
 
 
-R script: example.R
--------------------
+## R script: example.R
+ 
 
 This R script illusrtates the use of the above three R functions by applying them to the colorectal survival data.
 
 
-R script: some-calculation-used-in-the-paper.R
-----------------------------------------------
+## R script: some-calculation-used-in-the-paper.R
+
 
 This R script illustrates some calculation used in the Figures of our paper, include:
 
