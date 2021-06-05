@@ -80,7 +80,7 @@ independent variables)
 is time-to-event data, second column is the event status)
 
  self: 0 (default) if we use the out-of-bag samples to calculate IBS, 1 if we use the in-the-bag (training) samples.
-
+```
 
 
 ## R function: ibsCOX
