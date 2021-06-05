@@ -48,7 +48,7 @@ IBS for new samples (something like out-of-bag samples). There is an extra optio
 ave.flag=0) to show Brier's score at each time point. 
 
 R function: ibsRSF
----------------------
+------------------
 
 ibsRSF \<- function(rfsrc.obj, self=0, ave.flag=1)
 
