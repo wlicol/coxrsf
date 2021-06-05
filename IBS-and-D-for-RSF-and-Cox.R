@@ -22,7 +22,7 @@
 
 
 ############################################################################################
-# 1. D-index/RSF (OOB)
+# 1. D-index/RSF
 #
 # This error for OOB is already provided by rfsrc.obj:
 #	rfsrc.obj$err.rate[rfsrc.obj$ntree]
@@ -35,56 +35,73 @@
 
 
 ############################################################################################
-# 2. IBS/RSF (OOB)
+# 2. IBS/RSF (OOB) 
 #
 # rfsrc.obj$time.interest lists the "ordered unique death time"
 # rfsrc.obj$survival.oob is the "OOB survival function", for all samples, at all time of death,
 # as an array. The order of these suvival functions are first person's survival function at
 # the sorted time point, followed by the second person's, etc.
+#
+# if self=1, the "in-the-bag" obj$survival is used (default value is self=0, or use OOB samples).
+#
 # rfsrc.obj$yvar is the dependent variable of the form Surv(Time, Status) 
 #
-# If ave.flag=1 (default), the output is the averaged ("I" in IBS) Brier score, without any weight
-# the survival function is only available from rfsrc.obj at "unique dead times".
+# If ave.flag=0,  the function returns a three-row, T-column (T is the number of unique death time) matrix.
+# The first row is the Brier Score for status=1 samples, at each time point.
+# The second row is the Brier Score for status=0 samples, at each time point.
+# The third row is the Brier Score for all samples, at each time point.
 #
-# If ave.flag=0, a matrix with three rows are the output. The first row is IBS for people who
-# are dead (status=1); the second row is IBS for people who are censored (status=0); and the
-# last row the average of the two groups.
+# If ave.flag=1 (default), we have the integrated BS (IBS), i.e., mean(ibs.time.all[3,])
 #
 # Note that our calculation relies on object from rfsrc, without getting into each bootstrap+OOB split
 # of samples in one tree, and we trust each sample should have a chance to be in OOB, and
 # rfsrc.obj$survival.oob provides an average of all trees.
 ############################################################################################
 
-ibsRSFoob <- function(rfsrc.obj, ave.flag=1){
- nsample <- rfsrc.obj$n
- time <- rfsrc.obj$time.interest
+
+ibsRSF <- function(rfsrc.obj, self=0, ave.flag=1){
+ obj <- rfsrc.obj
+ nsample <- obj$n
+ time <- obj$time.interest
  ntime <- length(time)
 
- deadStatus <- rfsrc.obj$yvar[,2]
- deadtime <- rfsrc.obj$yvar[deadStatus==1,1]	# may not be identical to sort(time), but = unique( sort(time))
- censortime <- rfsrc.obj$yvar[deadStatus==0,1]
+ deadStatus <- obj$yvar[,2]
+ deadTime <- obj$yvar[deadStatus==1,1]
+ censorTime <- obj$yvar[deadStatus==0,1]
 
- survP <- rfsrc.obj$survival.oob
- if( length(survP) == (nsample*ntime)){
-  tmp <- matrix(survP, ncol=ntime)
-  tmp1 <- tmp[deadStatus==1, ]
-  tmp0 <- tmp[deadStatus==0, ]
-  bs1 <- matrix(nrow=nrow(tmp1), ncol=ntime)
-  bs0 <- matrix(nrow=nrow(tmp0), ncol=ntime)
+ if(self==0){
+  survP <- obj$survival.oob
+ }
+ else{
+  if(self==1){
+   survP <- obj$survival
+ }}
 
-  for(idead in 1:nrow(tmp1)){
-   coreBefore <- c(1:ntime)[ time < deadTime[idead] ]
-   coreAfter <- c(1:ntime)[ time >= deadTime[idead] ]
-   bs1[idead, coreBefore] <- (1-tmp1[idead,coreBefore])^2
-   bs1[idead, coreAfter] <- tmp1[idead,coreAfter]^2
-  }
+if(length(survP) == (nsample*ntime)){
 
-  for(ilive in 1:nrow(tmp0)){
-   coreBefore <- c(1:ntime)[ time < censorTime[ilive] ]
-   coreAfter <- c(1:ntime)[ time >= censorTime[ilive] ]
-   bs0[ilive, coreBefore] <- (1-tmp0[ilive,coreBefore])^2
-   bs0[ilive, coreAfter] <-  NA			# it should not be zero.
-  }
+   tmp <- matrix(survP, ncol=ntime)
+   tmp1 <- tmp[deadStatus==1, ]
+   tmp0 <- tmp[deadStatus==0, ]
+   bs1 <- matrix(nrow=nrow(tmp1), ncol=ntime)
+   bs0 <- matrix(nrow=nrow(tmp0), ncol=ntime)
+
+   # go through dead 
+   for(si in 1:nrow(tmp1)){
+     coreBefore <- c(1:ntime)[ time < deadTime[si] ]
+     coreAfter <- c(1:ntime)[ time >= deadTime[si] ]
+     bs1[si, coreBefore] <- (1-tmp1[si,coreBefore])^2
+     bs1[si, coreAfter] <- tmp1[si,coreAfter]^2
+   }
+
+   # go through censored
+   for(si in 1:nrow(tmp0)){
+     coreBefore <- c(1:ntime)[ time < censorTime[si] ]
+     coreAfter <- c(1:ntime)[ time >= censorTime[si] ]
+     bs0[si, coreBefore] <- (1-tmp0[si,coreBefore])^2
+     # it should not be zero, but unknown (not contributing)
+     # bs0[si, coreAfter] <- 0
+     bs0[si, coreAfter] <- NA
+   }
 
   bs <- rbind(bs1, bs0)
   ibs.time1 <- apply(bs1, 2, mean)
@@ -93,13 +110,14 @@ ibsRSFoob <- function(rfsrc.obj, ave.flag=1){
   ibs.time.all <- rbind(ibs.time1,ibs.time0,ibs.time)
 
   if(ave.flag==1){
-	aveibs <- mean(ibs.time.all[3,])
-	return( aveibs)
+   aveibs <- mean(ibs.time.all[3,])
+   return(aveibs)
   } else if(ave.flag==0){
-	return( ibs.time.all)
+   return(ibs.time.all)
   }
 
 }}
+
 
 
 ############################################################################################
@@ -115,51 +133,66 @@ ibsRSFoob <- function(rfsrc.obj, ave.flag=1){
 # New data is split between independent variables (newx) and dependent variable (newy) which
 # of the form Surv(time, status). newx is used to predict, newy is used to evaluate errors.
 #
+# A rarely used option is self=1, then newx/newy is not used. The IBS is calculated on the training dataset.
+#
+# The output contains these information: (1) total number of comparison; (2) number of concordance
+# out of these comparisons; (3) C-index = #(concordance)/#(comparison); (4) D-index= 1-Cindex
 ############################################################################################
 
-library(survival)
+# library(survival)
 
-dindexCox <- function(cox.obj, newx, newy){
+dindexCOX <- function(cox.obj, newx, newy, self=0){
 
- pred.risk.x  <- as.numeric(predict(cox.obj, newdata=newx, type="risk"))
- time.y <- newy[, 1]
- status.y <- newy[, 2]
- nsample <- length(time.y)
+ # self=0: use newx to predict the risk, newy to calculate c-index
+ if(self == 0){
+  # default is log(risk)
+  pred.risk  <- as.numeric(predict(cox.obj, newdata=newx, type="risk"))
+  p <- ncol(newy)
+  time <- newy[ ,p-1]
+  status <- newy[ ,p]
+ # self=1:  risk on the training set itself, original y (extracted from cox.obj)  to calculate c-index
+ } else{
+  pred.risk <- as.numeric(predict(cox.obj, type="risk"))
+  oriy <- cox.obj$y
+  p <- ncol(oriy)
+  time <- oriy[ ,p-1]
+  status <- oriy[ ,p]
+ }
 
- ord <- order(time.y, -status.y)
- time <- time.y[ord]		# this still may be identical to unique(time)
- status <- status.y[ord]
- pred.risk <- pred.risk.x[ord]
+ n <- length(time)
+ ord <- order(time, -status)
+ time.ordered <-  time[ord]
+ status.ordered <-  status[ord]
+ pred.risk.ordered <- pred.risk[ord]
 
- tmp0 <- cbind(1:nsample, pred.risk, time,status)
- tmp <- tmp0[sort.list(tmp0[,3]), ]
+ tmp0 <- cbind(1:n, pred.risk, time,status)
+ tmp.order <- tmp0[sort.list(tmp0[, 3]), ]
 
- wh <- c(1:nsample)[tmp[,4]==1]
+ wh <- c(1:n)[tmp.order[,4]==1]
+ # wh <- which(status == 1)
  total <- 0
- concordance <- 0
+ concordant <- 0
 
- # the first person i is the dead person
  for(i in wh){
-  if(i < nsample){
-   # the second person j can be either dead or cencored
-   for(j in (i+1):nsample){
-
-    #person-j live longer
-    if(tmp[j,3] > tmp[i,3]){
-     total <- total+1
-     #person-j also has a lower (predicted) risk, so concordance 
-     if(tmp[j,2] < tmp[i,2]){
-	concordance <- concordance +1
-     # in case the risks are tied
-     } else if(tmp[j,2]==tmp[i,2]){
-	concordance <- concordance +0.5
+  # last point will not form a pair
+  if(i < n){
+   for(j in (i+1):n ){
+     if(tmp.order[j,3] > tmp.order[i,3]){
+        # in case of bootstrap, avoid compare sample with itself
+        total <- total+1
+        if(tmp.order[j,2] < tmp.order[i,2]){
+         concordant <- concordant +1
+	}
+	else{ 
+         if(tmp.order[j,2]==tmp.order[i,2]){
+          concordant <- concordant + 0.5
+	 }
+	}
      }
-  }
- }
- }
- }
- return( list( concordant=concordant, total=total, cindex=concordant/total, dindex= 1-concordant/total ))
-
+   } # end of j loop
+  } # end of condition i < n (or i!=n)
+ } # end of i loop
+ return( list(concordant=concordant, total=total, cindex=concordant/total, dindex= 1-concordant/total ))
 
 }
 
@@ -175,10 +208,10 @@ dindexCox <- function(cox.obj, newx, newy){
 # for "the estimate of survival at time t+0"
 ############################################################################################
 
-library(survival)
+# library(survival)
 
 
-ibsCox2 <- function(cox.obj, newx, newy, ave.flag=1){
+ibsCOX  <- function(cox.obj, newx, newy, ave.flag=1){
  # (new)data information is derived from newy, not from cox.obj, which is derived from a different (part of the) dataset
  deadStatus <- newy[,2]
  deadTime <- newy[deadStatus==1,1]
@@ -195,8 +228,10 @@ ibsCox2 <- function(cox.obj, newx, newy, ave.flag=1){
  # the remaining part is identical to ibsRSFoob
  tmp1 <- tmp[deadStatus==1, ]
  tmp0 <- tmp[deadStatus==0, ]
+
+# what if there is only one status=1 sample
+if( length(deadTime) > 1){
  bs1 <- matrix(nrow=nrow(tmp1), ncol=ntime)
- bs0 <- matrix(nrow=nrow(tmp0), ncol=ntime)
 
  for(idead in 0:nrow(tmp1)){
   coreBefore <- c(1:ntime)[ time < deadTime[idead] ]
@@ -204,6 +239,11 @@ ibsCox2 <- function(cox.obj, newx, newy, ave.flag=1){
   bs1[idead, coreBefore] <- (1-tmp1[idead,coreBefore])^2
   bs1[idead, coreAfter] <- tmp1[idead,coreAfter]^2
  }
+}
+
+# what if there is only one status=0 sample
+if( length(censorTime) > 1){
+ bs0 <- matrix(nrow=nrow(tmp0), ncol=ntime)
 
  for(ilive in 1:nrow(tmp0)){
   coreBefore <- c(1:ntime)[ time < censorTime[ilive] ]
@@ -211,12 +251,24 @@ ibsCox2 <- function(cox.obj, newx, newy, ave.flag=1){
   bs0[ilive, coreBefore] <- (1-tmp0[ilive,coreBefore])^2
   bs0[ilive, coreAfter] <-  NA			# it should not be zero.
  }
+}
+
+# what if there is only one status=0 or one status=1 sample
+if(length(deadTime) > 1 & length(censorTime) > 1 ){
 
  bs <- rbind(bs1, bs0)
  ibs.time1 <- apply(bs1, 2, mean)
  ibs.time0 <- apply(bs0, 2, function(x){ mean( sort(x))  })
  ibs.time <- apply(bs, 2, function(x){ mean( sort(x))  } )
  ibs.time.all <- rbind(ibs.time1,ibs.time0,ibs.time)
+}else{
+ if(length(censorTime) > 1){
+  ibs.time.all <- rbind( rep(NA, length(ibs.time0)), ibs.time0, ibs.time0)
+ }
+ if(length(deadTime) > 1){
+  ibs.time.all <- rbind(ibs.time1, rep(NA, length(ibs.time1)), ibs.time1)
+ }
+}
 
  if(ave.flag==1){
 	aveibs <- mean(ibs.time.all[3,])

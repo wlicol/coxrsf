@@ -1,10 +1,8 @@
 #------------------------------------------------------------------------------------------------------------
 # this is a R script to illustrate the use of 
-# (1) ibsRF (rfsrc.obj, self=0) : use rfsrc.obj to calculate IBS error for out-of-bag (OOB) samples
-#  the output is 3-by-T (T is the number of time points). the first row is for status=1 samples,
-# second row for status=0 samples, and the third row for all samples. IBS = mean(ibsRF(...)[3,])
-# (2) dindexCox(cox.obj, newx, newy) : use cox.obj to calculate Dindex error for new samples
-# (3) ibsCox2( cox.obj, newx, newy, ave.flag=1) : use cox.obj to calculate IBS error for new samples
+# (1) ibsRSF (rfsrc.obj, self=0,ave.flag=1) : use rfsrc.obj to calculate IBS error for out-of-bag (OOB) samples
+# (2) dindexCOX(cox.obj, newx, newy,self=0) : use cox.obj to calculate Dindex error for new samples
+# (3) ibsCOX( cox.obj, newx, newy, ave.flag=1) : use cox.obj to calculate IBS error for new samples
 #
 # the dataset used is 221-person colorectal cancer survival data ("colorectal.txt")
 #
@@ -69,8 +67,8 @@ for(i in 1:100){
 IBS.RSF.oob <- NULL
 for(i in 1:100){
  rfsrc.obj <- rfsrc(surv.f, data=cr, nodesize=Nnode, ntree=Ntree, samptype="swr")
- ibs.time.all <- ibsRF(rfsrc.obj)
- IBS.RSF.oob <- c(IBS.RSF.oob, mean(ibs.time.all[3,])) 
+ ibs.time.all <- ibsRSF(rfsrc.obj)
+ IBS.RSF.oob <- c(IBS.RSF.oob, ibs.time.all) 
 }
 
 # one typical run
@@ -102,7 +100,8 @@ D.COX.oob <- NULL
 for(i in 1:100){
 
  di_tmp <- NULL
- for(j in 1:500){
+ # for(j in 1:500){
+ for(j in 1:5){
   # note one sample can appear more than once in "train", because "with replacement"
   train <- sample(1:nrow(cr), nrow(cr), replace=TRUE)
   cox.obj <- coxph(surv.f, cr[train, ])
@@ -113,7 +112,7 @@ for(i in 1:100){
   newy <- Surv(cr.val$time, cr.val$status)
   newx <- subset(cr.val, select=-c(time, status))
 
-  di_tmp <- c(di_tmp, cindexCox(cox.obj, newx, newy)$dindex )
+  di_tmp <- c(di_tmp, dindexCOX(cox.obj, newx, newy)$dindex )
  }
 
  D.COX.oob <- c(D.COX.oob, mean(di_tmp) )
@@ -148,7 +147,8 @@ IBS.COX.oob <- NULL
 for(i in 1:100){
 
  ibs_tmp <- NULL
- for(j in 1:500){
+ # for(j in 1:500){
+ for(j in 1:5){
   # note one sample can appear more than once in "train", because "with replacement"
   train <- sample(1:nrow(cr), nrow(cr), replace=TRUE)
   cox.obj <- coxph(surv.f, cr[train, ])
@@ -158,7 +158,7 @@ for(i in 1:100){
   cr.val <- cr[-train, ]
   newy <- Surv(cr.val$time, cr.val$status)
   newx <- subset(cr.val, select=-c(time, status))
-  ibs_tmp <- c(ibs_tmp,  ibsCox2(cox.obj, newx, newy) )
+  ibs_tmp <- c(ibs_tmp,  ibsCOX(cox.obj, newx, newy) )
  }
  IBS.COX.oob <- c(IBS.COX.oob, mean(ibs_tmp))
 }
